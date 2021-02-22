@@ -3,13 +3,6 @@ from io import BytesIO
 
 import requests
 import pygame
-from distance import lonlat_distance
-
-
-def draw_text(x, y, text, color=(255, 255, 255), size=30):
-    font = pygame.font.SysFont("arial", size)
-    text = font.render(text, True, color)
-    screen.blit(text, (x, y))
 
 
 toponym_to_find = " ".join(sys.argv[1:])
@@ -36,14 +29,22 @@ search_params = {
     "ll": address_ll,
     "type": "biz"
 }
+
 response = requests.get(search_api_server, params=search_params)
 json_response = response.json()
-organization = json_response["features"][0]
-org_name = organization["properties"]["CompanyMetaData"]["name"]
-org_address = organization["properties"]["CompanyMetaData"]["address"]
-org_time = organization["properties"]["CompanyMetaData"]["Hours"]["text"]
-point = organization["geometry"]["coordinates"]
-org_point = "{0},{1}".format(point[0], point[1])
+pharmacies = []
+for i in range(min(10, len(json_response["features"]))):
+    organization = json_response["features"][i]
+    org_time = organization["properties"]["CompanyMetaData"]["Hours"]["text"]
+    point = organization["geometry"]["coordinates"]
+    org_point = "{0},{1}".format(point[0], point[1])
+    if "круглосуточно" in org_time or "24" in org_time:
+        flag = "pm2gnm"
+    elif org_time == "":
+        flag = "pm2grm"
+    else:
+        flag = "pm2blm"
+    pharmacies.append(f"{org_point},{flag}")
 
 # maps
 p = ",".join([toponym_longitude, toponym_lattitude])
@@ -52,15 +53,12 @@ map_params = {
     "ll": p,
     "l": "sat",
     "size": "650,450",
-    "pt": f"{p},flag~{org_point},pma"
+    "pt": "~".join(pharmacies)
 }
 response = requests.get(map_api_server, params=map_params)
-distance = lonlat_distance(tuple(map(float, p.split(","))),
-                           tuple(map(float, org_point.split(","))))
-print(distance)
 
 pygame.init()
-screen = pygame.display.set_mode((1150, 450))
+screen = pygame.display.set_mode((650, 450))
 image = pygame.image.load(BytesIO(response.content))
 running = True
 while running:
@@ -68,10 +66,5 @@ while running:
         if event.type == pygame.QUIT:
             running = False
     screen.blit(image, (0, 0))
-    draw_text(660, 10, "Аптека")
-    draw_text(660, 50, org_name, size=20)
-    draw_text(660, 80, org_address, size=20)
-    draw_text(660, 110, org_time, size=20)
-    draw_text(660, 140, "Растояние: " + f"{distance:.{0}f} м.", size=20)
     pygame.display.flip()
 pygame.quit()
